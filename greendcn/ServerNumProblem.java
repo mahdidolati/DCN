@@ -8,9 +8,11 @@ package greendcn;
 
 import greendcn.power.NetworkPowerCalc;
 import greendcn.power.ServerPowerCalc;
+import java.util.logging.Level;
 import org.moeaframework.core.Solution;
 import org.moeaframework.core.variable.EncodingUtils;
 import org.moeaframework.problem.AbstractProblem;
+import utility.LogUtil;
 
 /**
  *
@@ -22,36 +24,43 @@ public class ServerNumProblem extends AbstractProblem {
     int maxServerAvail;
     ServerPowerCalc spc;
     NetworkPowerCalc npc;
-    double totalWork, serverCap, vm, bw;
-    int k, minS;
+    double totalWork, serverCap, hTOe, eTOa, aTOc;
+    int k, minS, maxSe;
     
     public ServerNumProblem(ServerPowerCalc spc, NetworkPowerCalc npc, 
             double totalWork, double serverCap, 
-            double vm, double bw, int k, int minS) {
+            double hTOe, double eTOa, double aTOc, int k, int minS) {
         super(1, 1);
         this.maxServerAvail = k*k*k/4;
         this.spc = spc;
         this.npc = npc;
         this.totalWork = totalWork;
         this.serverCap = serverCap;
-        this.vm = vm;
-        this.bw = bw;
+        this.hTOe = hTOe;
+        this.eTOa = eTOa;
+        this.aTOc = aTOc;
         this.k = k;
         this.minS = minS;
-        System.out.println("data for optimization with genetic algorithm:");
-        System.out.println("k: " + k + "\ntotal work: " + totalWork + "\nserver capacity: " + serverCap);
-        System.out.println("vm: " + vm + "\nbw: " + bw + "\nminimum server: " + minS);
+        this.maxSe = k*k*k/4;
+//        System.out.println("data for optimization with genetic algorithm:");
+//        System.out.println("k: " + k + "\ntotal work: " + totalWork + "\nserver capacity: " + serverCap);
+//        System.out.println("vm: " + vm + "\nbw: " + bw + "\nminimum server: " + minS);
 //        System.out.println("max server available: "+this.maxServerAvail+ ", total work: " + this.totalWork + ", servercap: " + this.serverCap);
     }
     
     @Override
     public void evaluate(Solution solution) {
         int[] x = EncodingUtils.getInt(solution);
-        double f1 = this.spc.getConsumption(x[0], totalWork);
-        double f2 = this.npc.getConsumption(x[0], totalWork, serverCap, vm, bw, k);
-        solution.setObjective(0, f1+f2);
-        //solution.setObjective(1, f2);
+        if(x[0] > maxSe || x[0] < minS)
+            solution.setObjective(0, Double.MAX_VALUE);
+        else {
+            double f1 = this.spc.getConsumption(x[0], totalWork);
+            double f2 = this.npc.getConsumption(x[0], totalWork, serverCap, hTOe, eTOa, aTOc, k);
+            solution.setObjective(0, f1+f2);
+//            LogUtil.LOGGER.log(Level.INFO, "n, srv, net: {0} {1} {2}", new Double[]{(double)x[0],f1,f2});
+        }
     }
+
     
     @Override
     public Solution newSolution() {

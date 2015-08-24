@@ -22,6 +22,11 @@ public class Output {
     public static String SERVER = "server";
     public static String NUMBER = "number";
     public static String VALUE = "value";
+    public static String I_SERVER = "img_server";
+    public static String DC = "dc";
+    public static String NETWORK = "network";
+    public static String NET_MIN = "net_min";
+    public static String ALL_TRAFFIC = "all_traffic";
     
     Map<String, Map<String, Double>> vals;
     Map<String, Map<String, Integer>> statNum;
@@ -66,10 +71,10 @@ public class Output {
     }
     
     public void addOutput(Output o) {
-        for(String s : o.vals.keySet()) {
-            for(String t : o.vals.get(s).keySet()) {
-                LogUtil.LOGGER.log(Level.INFO, "Adding Out: {0}", o.vals.get(s).get(t));
-                this.addVal(s, t, o.vals.get(s).get(t), o.statNum.get(s).get(t));
+        for(String device : o.vals.keySet()) {
+            for(String stat : o.vals.get(device).keySet()) {
+//                LogUtil.LOGGER.log(Level.INFO, "Adding Out: {0}", o.vals.get(s).get(t));
+                this.addVal(device, stat, o.vals.get(device).get(stat), o.statNum.get(device).get(stat));
             }
         }
     }
@@ -104,7 +109,7 @@ public class Output {
         String ret = "";
         for(String device : this.vals.keySet()) {
             for(String stat : this.vals.get(device).keySet()) {
-                LogUtil.LOGGER.log(Level.INFO, "device, stat: {0} {1}", new String[]{device, stat});
+//                LogUtil.LOGGER.log(Level.INFO, "device, stat: {0} {1}", new String[]{device, stat});
                 ret = ret + this.vals.get(device).get(stat) + ", ";
             }
         }
@@ -120,20 +125,27 @@ public class Output {
     }
 
     public double getDcConsumption() {
-        double dcUsage = 0.0;
-        for(String device : this.vals.keySet()) {
-            for(String stat : this.vals.get(device).keySet()) {
-                if(stat.equals(Output.NUMBER) == false)
-                    dcUsage += this.vals.get(device).get(stat);
-            }
-        }
-        return dcUsage;
+        return this.getNetworkConsumption()+this.getStat(Output.SERVER, Output.VALUE);
     }
     
     public double getStat(String d, String s) {
-        return this.vals.get(d).get(s);
+        if(this.vals.containsKey(d))
+            if(this.vals.get(d).containsKey(s))
+                return this.vals.get(d).get(s);
+            else
+                return Double.NaN;
+        else {
+            if(d.equals(Output.DC))
+                return this.getDcConsumption();
+            if(d.equals(Output.NETWORK))
+                if(s.equals(Output.VALUE))
+                    return this.getNetworkConsumption();
+                else if(s.equals(Output.NUMBER))
+                    return this.getNetworkNumber();
+        }
+        return Double.NaN;
     }
-
+    
     public double getNetworkConsumption() {
         return this.getStat(Output.EDGE, Output.VALUE) +
                 this.getStat(Output.AGG, Output.VALUE) +

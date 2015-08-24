@@ -17,4 +17,21 @@ public class SwitchTraffic {
     public double out;
     public JobMy j;
     public int superVm;
+    
+    public SwitchTraffic() {
+        this.in = this.out = 0.0;
+    }
+    
+    public void addSwTr(SwitchTraffic st) {
+        this.in += st.in;
+        this.out += st.out;
+    }
+
+    public SwitchTraffic getCopy() {
+        SwitchTraffic st = new SwitchTraffic();
+        st.in = st.in;
+        st.out = st.out;
+        return st;
+    }
+    
 }

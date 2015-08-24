@@ -23,9 +23,11 @@ public class DevicePowerUsageModel {
     int portNum;
     
     public DevicePowerUsageModel(double mu, double mp, double pr, int portNum) {
-        System.out.println(">>>>>>>>>>>>>>>>>"+mu*portNum);
+//        System.out.println(">>>>>>>>>>>>>>>>>"+mu*portNum);
         this.beta = mp * (1.0-pr);
         this.alpha = (mp*pr)/(mu*mu*portNum*portNum);
+//        LogUtil.LOGGER.log(Level.INFO, "alpha beta: {0} {1}", 
+//                new Double[]{this.alpha, this.beta}); 
         this.maxUsage = mu;
         this.maxPower = mp;
         this.proportionality = pr;
@@ -45,7 +47,7 @@ public class DevicePowerUsageModel {
     public double getDynamicConsumption(double load) {
 //        System.out.println("MAX USAGE:::::: " + load + " " + this.maxUsage*this.portNum);
         if(load > this.maxUsage*this.portNum) {
-            LogUtil.LOGGER.log(Level.INFO, "usage is more than allowed: {0} {1}", new String[]{""+load,""+this.maxUsage*this.portNum});
+//            LogUtil.LOGGER.log(Level.INFO, "usage is more than allowed: {0} {1}", new String[]{""+load,""+this.maxUsage*this.portNum});
 //            load = this.maxUsage*this.portNum;
 //            System.out.println("MAX USAGE:::::: " + load + " " + this.maxUsage*this.portNum);
         }
@@ -58,6 +60,8 @@ public class DevicePowerUsageModel {
             return Integer.MAX_VALUE;
         if(load == 0)
             return 0;
+//        LogUtil.LOGGER.log(Level.INFO, "best sw: {0} {1} {2} {3}", 
+//                new Double[]{this.alpha, load, Math.sqrt(this.alpha/this.beta)*load, (double)max});    
 //        System.out.println("(alpha,beta): " + this.alpha + ", " + this.beta + ", " + Math.sqrt(this.alpha/this.beta) + ", " + load + ", " + Math.sqrt(this.alpha/this.beta)*load);
         double nn = Math.sqrt(this.alpha/this.beta)*load;
 //        System.out.println("........:::: " + nn);

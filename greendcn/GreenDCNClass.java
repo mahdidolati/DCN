@@ -9,6 +9,8 @@ package greendcn;
 import GomoryHuP.CutProxy;
 import MyPackage.MyPack.JobMy;
 import MyPackage.MyPack.My;
+import MyPackage.MyPack.ReturnTrCpu;
+import MyPackage.MyPack.Server;
 import greendcn.generator.CpuUsage;
 import greendcn.generator.TrafficGenerator;
 import greendcn.generator.VmNumberGenerator;
@@ -90,19 +92,12 @@ public class GreenDCNClass {
     
     public List<Switch> getCore(List<Switch> pods) {      
         for(Switch sw : pods) {
-//            Switch s = new Switch();
-            SwitchTraffic st = new SwitchTraffic();
-            st.in = 0.0;
-            st.out = 0.0;
-            for(JobMy j : this.jobs) {
-                double [] res = j.getSwitchTrafficCore(sw);
-                if(res == null)
-                    continue;
-                st.in += res[0];
-                st.out += res[1];
+            Server ser = new Server();
+            for(Server server : sw.getServers()) {
+                ser.merge(server.getCopy());
             }
+            SwitchTraffic st = ser.getInOut();
             sw.add(st);
-//            core.add(s);
         }
         return pods;
     }
@@ -110,18 +105,24 @@ public class GreenDCNClass {
     public List<Switch> getAgg(List<Switch> edges) {   
         List<Switch> agg = new ArrayList<>();
         for(Switch sw : edges) {
+            Server server = new Server();
             Switch s = new Switch();
-            SwitchTraffic st = new SwitchTraffic();
-            st.in = 0.0;
-            st.out = 0.0;
-            for(JobMy j : this.jobs) {
-                double [] res = j.getSwitchTrafficAgg(sw);
-                if(res == null)
-                    continue;
-//                System.out.println("HOOOOOR");
-                st.in += res[0];
-                st.out += res[1];
+            for(Server serv : sw.getServers()) {
+                //cheraaaaa?????
+                Server tServ = serv.getCopy();
+                server.merge(tServ);
+//                s.addServer(serv);
             }
+            s.addServer(server);
+            SwitchTraffic st = server.getInOut();
+//            for(JobMy j : this.jobs) {
+//                double [] res = j.getSwitchTrafficAgg(sw, s);
+//                if(res == null)
+//                    continue;
+////                System.out.println("HOOOOOR");
+//                st.in += res[0];
+//                st.out += res[1];
+//            }
             s.add(st);
             agg.add(s);
         }
@@ -215,7 +216,7 @@ public class GreenDCNClass {
         return ret;
     }
     
-    public List<List<Switch>> assignSuperVmsToServers() {
+    public List<List<Switch>> assignSuperVmsToServers(double maxLoad) {
         List<List<Switch>> ret = new ArrayList<>();
         List<Switch> ed = new ArrayList<>();
         List<Switch> podRepresentative = new ArrayList<>();
@@ -235,20 +236,26 @@ public class GreenDCNClass {
             for(int i=0; i<HALF_K; i++) {
                 edges.add(new Switch());
             }
-            int serv = 0;
             for(JobMy j : this.jobs) {
                 if(j.unassignedSupers() > 0) {
                     //be tedade assign nashodehaye in job be in edges ezafe mishavad
                     //albate momkene hamash assign nashode bashe ke dore bad assign khahand shod
-                    serv += j.unassignedSupers();
+//                    serv += j.unassignedSupers();
                     //------------??
-                    j.assignSuperToSwitchTorMin(edges, pod);
-                    if(serv >= HALF_K)
-                        break;
+                    j.assignSuperToSwitchTorMin(edges, pod, maxLoad);
+                    //sooti ha tabaq tabaq
+                    
+//                    if(serv >= HALF_K*HALF_K)
+//                        break;
                 }
             }
-            ed.addAll(edges);
+            for(Switch hasLoad : edges) {
+                if(!hasLoad.getServers().isEmpty()) {
+                    ed.add(hasLoad);
+                }
+            }
         }
+        
         ret.add(ed);
         ret.add(podRepresentative);
         return ret;
@@ -317,39 +324,6 @@ public class GreenDCNClass {
         return ret;
     }
     
-    public int bestServerNumber(DevicePowerUsageModel powModel, DevicePowerUsageModel powModelServer) {
-        
-        ServerPowerCalc srvPow = new ServerPowerCalc(powModelServer);
-        NetworkPowerCalc netPow = new NetworkPowerCalc(powModel);
-        
-        double totalWork = this.getTotalWork();
-        double bw = this.getEBw();
-        double vm = this.getEConnNum();
-        
-        //
-        //configure and run this experiment
-        NondominatedPopulation result = new Executor()
-                        .withProblemClass(ServerNumProblem.class, 
-                                srvPow, netPow, totalWork, powModelServer.getMaxUsage(), vm, bw, FatTree.getK())
-                        .withAlgorithm("NSGAII")
-                        .withMaxEvaluations(10000)
-                        .run();
-
-        //display the results
-//        System.out.format("Objective1  Objective2%n");
-        for (Solution solution : result) {
-//                System.out.format("%s,,       %.4f,,       %.4f,,        %.4f,,%n",
-//                                solution.getVariable(0).toString(),
-//                                solution.getObjective(0),
-//                                srvPow.getC(Double.valueOf(solution.getVariable(0).toString()), totalWork),
-//                                solution.getObjective(1));
-                return Double.valueOf(solution.getVariable(0).toString()).intValue();
-        }
-        
-        //no solution
-        return -1;
-    }
-    
     public double getEBw() {
         double sum = 0.0;
         int num = 0;
@@ -385,17 +359,57 @@ public class GreenDCNClass {
         }
     }
     
+    public void createSuperVms2(double serverMaxUsage) {
+        for(JobMy j : this.jobs) {
+            j.createSuperVm(serverMaxUsage, null);
+        }
+    }
+    
     public void createSuperVms(DevicePowerUsageModel powModel) {
+        this.servers = new ArrayList<>();
+        int num = 0;
         for(JobMy j : this.jobs) {
             j.createSuperVm(powModel.getMaxUsage(), powModel);
-//            System.out.println("agg size: " + j.getSuperTrafficMatrix().size());
+            num += j.cpu.size();
+//            this.servers.addAll(j.servers);
         }
+        System.out.println(":(((" + num);
     }
 
     public void createSuperVmsElastic(DevicePowerUsageModel powModel) {
+        double serverCap = powModel.getMaxUsage();
         for(JobMy j : this.jobs) {
             j.createSuperElastic(powModel.getMaxUsage());
         }
+        servers = new ArrayList<>();
+        for(JobMy jj : this.jobs) {
+            servers.addAll(jj.servers);
+        }
+        boolean hadAssign;
+        do{
+            hadAssign = false;
+            for(int i=0; i<servers.size(); ++i) {
+                for(int j=0; j<servers.size(); ++j) {
+                    if(i == j)
+                        continue;
+                    if(servers.get(i).curLoad+servers.get(j).curLoad>serverCap)
+                        continue;
+                    servers.get(i).merge(servers.get(j));
+                    servers.get(i).curLoad += servers.get(j).curLoad;
+                    servers.remove(j);
+                    hadAssign = true;
+                    break;
+                }
+            }
+        }while(hadAssign);
+        
+        int nm = 0;
+        for(Server server : this.servers) {
+            for(JobMy j : server.hosted.keySet()) {
+                nm += server.hosted.get(j).size();
+            }
+        }
+//        System.out.println("--------------------------------------------------------" + nm);
     }
     
     public GreenDCNClass copy() {
@@ -408,7 +422,7 @@ public class GreenDCNClass {
         return m;
     }
 
-    void calculateCuts() {
+    public void calculateCuts() {
         for(JobMy j : this.jobs) {
 //            System.out.println("super green vm size: " + j.getSuperTrafficMatrix().size() + " " + j.getSuperVmCpu().size());
             j.calculateCuts();
@@ -416,11 +430,7 @@ public class GreenDCNClass {
     }
 
     public int getServerNum() {
-        int n = 0;
-        for(JobMy j : this.jobs) {
-            n += j.getSuperTrafficMatrix().size();
-        }
-        return n;
+        return this.servers.size();
     }
     
     public double sumSuperTrafficMatrix() {
@@ -433,14 +443,165 @@ public class GreenDCNClass {
     
     public List<Double> getget() {
         List<Double> ll = new ArrayList<>();
-        for(JobMy j : this.jobs) {
-            for(Double d : j.getSuperVmCpu()) {
-//                System.out.print("" + d + " ");
-                ll.add(d);
+        int num = 0;
+        for(Server server : this.servers) {
+            if(server.deleted)
+                System.err.println("getget:Reporting deleted server!");
+            ll.add(server.curLoad);
+            for(JobMy j : server.hosted.keySet()) {
+                num += server.hosted.get(j).size();
             }
-//            System.out.println("");
         }
+        System.out.println("getget:" + num);
         return ll;
     }
+
+    public List<Server> servers;
+    
+    public void consolidate(double serverCap) {
+        servers = new ArrayList<>();
+        Server curServer;
+        for(JobMy jj : this.jobs) {
+            servers.addAll(jj.servers);
+//            for(int i=0; i<jj.getSuperVmCpu().size();++i) {
+//                curServer = new Server(serverCap);
+//                ReturnTrCpu rtc = new ReturnTrCpu();
+//                rtc.index = i;
+//                rtc.cpu = jj.getSuperVmCpu().get(i);
+//                rtc.j = jj;
+//                curServer.addCandidate(rtc);
+//                servers.add(curServer);
+//            }
+        }
+//        boolean hadAssign;
+//        do{
+//            hadAssign = false;
+//            for(int i=0; i<servers.size(); ++i) {
+//                double between = -1;
+//                for(int j=0; j<servers.size(); ++j) {
+//                    if(i == j)
+//                        continue;
+//                    if(servers.get(i).deleted || servers.get(j).deleted)
+//                        continue;
+//                    if(servers.get(i).curLoad+servers.get(j).curLoad>serverCap)
+//                        continue;
+////                    double curBetween = servers.get(i).getBetween(servers.get(j));
+//                    servers.get(i).merge(servers.get(j));
+//                    servers.get(i).curLoad += servers.get(j).curLoad;
+//                    servers.get(j).deleted = true;
+//                    hadAssign = true;
+//                }
+//            }
+//        }while(hadAssign);
+    }
+
+    public double averageServerUtilization2() {
+        double sum = 0.0;
+        double sum2 = 0.0;
+        double num = 0;
+        for(Server srv : this.servers) {
+            sum += srv.curLoad;
+            sum2 += Math.pow(srv.curLoad, 2);
+            num++;
+        }
+        double stdDev = Math.sqrt(sum2/num-Math.pow(sum/num, 2));
+        return sum/num;
+    }
+    
+    public double stdDevServerUtilization2() {
+        double sum = 0.0;
+        double sum2 = 0.0;
+        double num = 0;
+        for(Server srv : this.servers) {
+            sum += srv.curLoad;
+            sum2 += Math.pow(srv.curLoad, 2);
+            num++;
+        }
+        double stdDev = Math.sqrt(sum2/num-Math.pow(sum/num, 2));
+        return stdDev;
+    }
+
+    public List<Switch> getHostToEdgeByServer(List<Server> srvs, int groupSize) {
+        int num = 0;
+        Switch sw = new Switch();
+        List<Switch> sws = new ArrayList<>();
+        for(Server srv : srvs) {
+            if(num >= groupSize) {
+                sws.add(sw);
+                sw = new Switch();
+                num = 0;
+            }
+            sw.add(srv.getInOut());
+            sw.addServer(srv);
+            num++;
+        }
+        if(sw.getServers().isEmpty() == false)
+            sws.add(sw);
+        return sws;
+    }
+    
+    public List<Switch> getEdgeToAggByServer(List<Switch> hostToEdge, int groupSize) {
+        List<Switch> copyyy = new ArrayList<>();
+        for(Switch sww : hostToEdge) {
+            copyyy.add(sww.getCopy());
+        }
+        hostToEdge = copyyy;
+        
+        List<Server> srvs = new ArrayList<>();
+        for(Switch sw : hostToEdge) {
+            Server srv = new Server();
+            for(Server oSrv : sw.getServers()) {            
+                srv.merge(oSrv);
+            }
+            srvs.add(srv);
+        }
+        
+        
+        List<Switch> toRet = getHostToEdgeByServer(srvs, groupSize);
+        
+        return toRet;
+    }
+    
+    public List<Switch> getInterPodByServer(List<Switch> edgeToAgg, int groupSize) {
+        List<Switch> rr = getEdgeToAggByServer(edgeToAgg, groupSize);
+        for(Switch sw : rr) {
+            boolean f = true;
+            Server ss = null;
+            for(Server s : sw.getServers()) {
+                if(f) {
+                    f = false;
+                    ss = s;
+                }else{
+                    ss.merge(s.getCopy());
+                    ss.curLoad += s.curLoad;
+                }
+            }
+            List<Server> l = new ArrayList<>();
+            l.add(ss);
+            sw.setServers(l);
+        }
+        return rr;
+    }
+
+
+    public void fillServers() {
+       int num = 0;
+        for(JobMy j : this.jobs) {
+           for(Server s : j.servers) {
+               if(s.deleted == false) {
+                   this.servers.add(s);
+               }
+           }
+       }
+        double v= 0;
+        for(Server s : this.servers) {
+            v += s.curLoad;
+            for(JobMy j : s.hosted.keySet()) {
+                num += s.hosted.get(j).size();
+            }
+        }
+        System.out.println("bad az por kardan: " + num + " " + v);
+    }
+
     
 }

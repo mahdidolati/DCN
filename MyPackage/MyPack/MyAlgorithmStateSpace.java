@@ -14,6 +14,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.logging.Level;
+import shared.AlgRunner;
 import utility.FatTree;
 import utility.LogUtil;
 import utility.Output;
@@ -31,11 +32,14 @@ public class MyAlgorithmStateSpace {
     public Map<Double, Output> bexps;
     public Map<Double, Output> mexps;
     public Map<Double, List<Output>> bexpsAll;
+    public Map<Double, List<Output>> nBexpsAll;
+    public Map<Double, Output> myExp;
     
     public MyAlgorithmStateSpace() {
         bexps = new HashMap<>();
         mexps = new HashMap<>();
         this.bexpsAll = new HashMap<>();
+        this.nBexpsAll = new HashMap<>();
     }
     
     public MyAlgorithmStateSpace(My m1) {
@@ -57,55 +61,79 @@ public class MyAlgorithmStateSpace {
     }
     
     public void run() throws IOException {
-        System.out.println("--------------MY State Space-----------------");
+//        System.out.println("--------------MY State Space-----------------");
         
         double total = m1.getTotalWork();
         double lowerBoundOfServerNum = Math.ceil(total / serverPower.getMaxUsage());
-        System.out.println("Minimum server req: " + lowerBoundOfServerNum + ", for total work: " + total);
+//        System.out.println("Minimum server req: " + lowerBoundOfServerNum + ", for total work: " + total);
         
         double totoalServerAvailable = Math.pow(FatTree.getK(), 3)/4.0;
         double sn = lowerBoundOfServerNum;
         Output bestCase = null;
         Output netMin = null;
+        double tsn = 0;
+        double ttsn = -1;
         
         while(true) {
             if(sn > totoalServerAvailable) {
                 break;
             }
-            if(this.serverPower.getMaxUsage() < total/sn) {
-                System.out.println("" + sn + ", I, I, I\n");
-            }else{
-                m1.createSuperVmsEachJobSeparate((int)sn, total);
-                
-                double tsn = m1.getServerNum();
-                LogUtil.LOGGER.log(Level.INFO, " try {0}", sn);
-                LogUtil.LOGGER.log(Level.INFO, " got {0}", tsn);
+//            System.out.println("" + sn);
+//            LogUtil.LOGGER.log(Level.INFO, "ttry: {0}", sn);
+                m1.createServersWithAllJobs((int)sn, total);
+//                m1.vmPlacementServerBasedSenderPriority(total/sn, serverPower.getMaxUsage(), 0);
+//                LogUtil.LOGGER.log(Level.INFO, "ggot: {0}", m1.servers.size());
+//                int rret = m1.bestServerNumber(serverPower, edgePower, aggPower, corePowModel, linkPower);
+//                LogUtil.LOGGER.log(Level.INFO, "--> ret: {0}", rret);
+//                System.out.println(">>>>" + m1.servers.size() + " " + hToE.size() + " " + eToA.size() + " " + interPod.size());
+//                m1.createSuperVmsEachJobSeparate((int)sn, total);
+//                System.out.println("cap: " + (total/sn));
+//                for(Server srv : m1.servers) {
+//                    System.out.print("" + srv.curLoad + " ");
+//                }
+//                System.out.println("");
+                ttsn = tsn;
+                tsn = m1.getServerNum();
+//                LogUtil.LOGGER.log(Level.INFO, " try {0}", sn);
+//                LogUtil.LOGGER.log(Level.INFO, " got {0}", tsn);
+//                LogUtil.LOGGER.log(Level.INFO, "other got {0}", m1.servers.size());
 //                System.out.println("Size of one server: " + (total/sn) + ", " + tsn);
 //                m1.printSizeOfEachVm();
+    
+                if(tsn > totoalServerAvailable) {
+                    LogUtil.LOGGER.log(Level.INFO, "reached server capacity...");
+                    break;
+                }
                 
-                if(tsn >= sn) {
+
 //                    LogUtil.LOGGER.log(Level.INFO, " got sthng {0}", tsn);
-                    sn = tsn;
                     CalCulator.mode = CalCulator.BEST;
-                    Output tempOut = this.getConsumption(m1);
+                    Output tempOut;// = this.getConsumption(m1);
+                    tempOut = this.getConsumptionByServer(m1);
+                    Output nTempOut = this.getConsumptionByServer(m1);
                     this.addAllExps(bexpsAll, this.proportionality, tempOut);
+                    this.addAllExps(nBexpsAll, this.proportionality, nTempOut);
                     if(bestCase == null)
-                        bestCase = tempOut;
+                        bestCase = nTempOut;
                     else
-                        if(bestCase.getDcConsumption() > tempOut.getDcConsumption())
-                            bestCase = tempOut;
+                        if(bestCase.getDcConsumption() > nTempOut.getDcConsumption())
+                            bestCase = nTempOut;
                     CalCulator.mode = CalCulator.MIN;
-                    tempOut = this.getConsumption(m1);
+                    tempOut = this.getConsumptionByServer(m1);
                     if(netMin == null)
                         netMin = tempOut;
                     else
                         if(netMin.getDcConsumption() > tempOut.getDcConsumption())
                             netMin = tempOut;
-                }
-            }
-            sn += 20;
+
+            
+            sn += 10000;
         }
-        LogUtil.LOGGER.log(Level.INFO, "DC Consumption Best: {0}", bestCase.getDcConsumption());
+//        if(bestCase == null)
+//            throw new NullPointerException();
+        if(bestCase != null)
+            this.addExp(bexps, proportionality, bestCase);
+//        LogUtil.LOGGER.log(Level.INFO, "DC Consumption Best: {0}", bestCase.getDcConsumption());
 //        this.addExp(this.bexps, this.proportionality, bestCase);
 //        this.addExp(this.mexps, this.proportionality, netMin);
     }
@@ -119,6 +147,7 @@ public class MyAlgorithmStateSpace {
     }
     
     private void addAllExps(Map<Double, List<Output>> m, double d, Output o) {
+//        LogUtil.LOGGER.log(Level.INFO, "--");
         if(m.containsKey(d)) {
             m.get(d).add(o);
         }else {
@@ -128,56 +157,32 @@ public class MyAlgorithmStateSpace {
         }
     }
     
-    private Output getConsumption(My m1) {
+    private Output getConsumptionByServer(My m1) {
         
-        Output output = new Output();
         
-        List<Switch> hostToEdge = m1.edgeTraffic();
-        List<Switch> edgeToAgg = m1.getAgg(hostToEdge);
+        List<Switch> hostToEdge = m1.getHostToEdgeByServer(m1.servers, FatTree.getK()/2);
+        List<Switch> edgeToAgg = m1.getEdgeToAggByServer(hostToEdge, 1);
+        List<Switch> pods = m1.getInterPodByServer(edgeToAgg, FatTree.getK()/2);
         
-        List<Switch> pods = m1.assignSupersToPods();
-        pods = m1.getCore(pods);
-
-//        System.out.println("" + hostToEdge.size() + " " + edgeToAgg.size() + " " + pods.size());
-//        for(Switch sw : hostToEdge) {
-//            System.out.println("h to e: " + sw);
-//        }
-//        for(Switch sw : edgeToAgg) {
-//            System.out.println("e to a: " + sw);
-//        }
-//        for(Switch sw : pods) {
-//            System.out.println("p: " + sw);
-//        }
+        CalCulator.mode = CalCulator.BEST;
+        AlgRunner algRunner = new AlgRunner();
+        algRunner.setAggPower(aggPower);
+        algRunner.setCorePowModel(corePowModel);
+        algRunner.setEdgePower(edgePower);
+        algRunner.setLinkPower(linkPower);
+        algRunner.setServerPower(serverPower);
+        Output output = algRunner.getNutConsump(hostToEdge, edgeToAgg, pods);
         
-        double ret1[];
-        ret1 = CalCulator.getConsumptionEdge(hostToEdge, edgeToAgg, edgePower, linkPower);
-        output.addVal(Output.EDGE, Output.NUMBER, ret1[0]);
-        output.addVal(Output.EDGE, Output.VALUE, ret1[1]);
-
-        ret1 = CalCulator.getAggConsumption(edgeToAgg, pods, aggPower, linkPower);
-        output.addVal(Output.AGG, Output.NUMBER, ret1[0]);
-        output.addVal(Output.AGG, Output.VALUE, ret1[1]);
-
-        ret1 = CalCulator.getConsumptionCore(pods, corePowModel, linkPower);
-        output.addVal(Output.CORE, Output.NUMBER, ret1[0]);
-        output.addVal(Output.CORE, Output.VALUE, ret1[1]);
-
-        int serverNum = m1.getServerNum();
-        
-        double srvVal = 0.0;
-        for(Double d : m1.getget()) {
-            srvVal += this.serverPower.getConsumption(d);
+        double srvVal = m1.servers.size()*this.serverPower.getConsumption(m1.getTotalWork()/m1.servers.size());
+        double iSrvVal = 0.0;
+        for(Server server : m1.servers) {
+//            srvVal += this.serverPower.getConsumption(server.curLoad);
+            iSrvVal += this.serverPower.getConsumption(server.curLoad);
         }
 //        System.out.println("" + srvVal);
         output.addVal(Output.SERVER, Output.NUMBER, m1.getServerNum());
-        output.addVal(Output.SERVER, Output.VALUE, srvVal);
-        
-//        ret1 = CalCulator.getConsumptionServer(m1.getTotalWork(), serverNum, serverPower);
-//        if(ret1[1] == Double.NaN) {
-//            System.out.println("\n\n**NNNNNNNNNNNNAAAAAAnnnnnn: " + m1.getTotalWork() + ", " + serverNum + " \n**\n\n");
-//        }
-//        output.addVal(Output.SERVER, Output.NUMBER, ret1[0]);
-//        output.addVal(Output.SERVER, Output.VALUE, ret1[1]);
+        output.addVal(Output.SERVER, Output.VALUE, iSrvVal);
+        output.addVal(Output.I_SERVER, Output.VALUE, srvVal);
         
         return output;
         

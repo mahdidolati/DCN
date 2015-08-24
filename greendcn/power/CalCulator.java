@@ -13,6 +13,7 @@ import utility.Output;
 import utility.Switch;
 import utility.SwitchTraffic;
 import java.util.logging.Logger;
+import utility.LogUtil;
 /**
  *
  * @author mahdi
@@ -74,7 +75,17 @@ public class CalCulator {
                     podToCoreLoad += (pst.in + pst.out);
                 }
                 double allLoad = podToCoreLoad + trValIn + trValOut;
+                
+                int ttemp = mode;
+                mode = CalCulator.MIN;
+                int m = getNumber(swFabricPow, allLoad, FatTree.getK()/2);
+                mode = CalCulator.BEST;
                 int b = getNumber(swFabricPow, allLoad, FatTree.getK()/2);
+//                LogUtil.LOGGER.log(Level.INFO, "agg sw: {0} {1}", new Integer[]{m, b});    
+                mode = ttemp;
+                
+                b = getNumber(swFabricPow, allLoad, FatTree.getK()/2);
+//                System.out.println("........" + m + " " + b);
 //                int m = swFabricPow.getMinFor(allLoad, FatTree.getK()/2);
 //                System.out.println("best: " + b + ", min: " + d.getMinFor(trValIn+trValOut, FatTree.getK()/2));
                 if(b != 0) {
@@ -87,6 +98,7 @@ public class CalCulator {
                 }
                 podCounter = 0;
                 trValIn = 0;
+                trValOut = 0;
             }
             for(SwitchTraffic st : sws.get(i).getSwitchTraffic()) {
                 trValIn += st.in;
@@ -110,7 +122,20 @@ public class CalCulator {
                 trOut += st.out;
             }
         }
-        int b = getNumber(swFabric, tr+trOut, FatTree.getK());
+        
+        int maxCore = (int)(Math.pow(FatTree.getK(), 2)/4);
+        
+        int b,m;
+        int ttemp = mode;
+        
+        mode = CalCulator.BEST;
+        b = getNumber(swFabric, tr+trOut, maxCore);
+        mode = CalCulator.MIN;
+        m = getNumber(swFabric, tr+trOut, maxCore);        
+//        LogUtil.LOGGER.log(Level.INFO, "core sw: {0} {1}", new Integer[]{m, b});    
+        mode = ttemp;
+        
+        b = getNumber(swFabric, tr+trOut, maxCore);
         if(b == 0) {
             pow[0] = 0;
             pow[1] = 0;

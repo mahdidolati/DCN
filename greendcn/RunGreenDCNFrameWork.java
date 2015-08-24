@@ -6,13 +6,17 @@
 
 package greendcn;
 
+import MyPackage.MyPack.JobMy;
 import MyPackage.MyPack.My;
+import MyPackage.MyPack.Server;
 import greendcn.power.CalCulator;
 import greendcn.power.DevicePowerUsageModel;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.logging.Level;
+import shared.AlgRunner;
 import utility.FatTree;
 import utility.LogUtil;
 import utility.Output;
@@ -31,82 +35,43 @@ public class RunGreenDCNFrameWork {
     public Map<Double, Map<Double, Output>> bexps;
     public Map<Double, Output> mexps;
     private GreenDCNClass g;
-    
+    public boolean isCalced;
     public RunGreenDCNFrameWork() {
         bexps = new HashMap<>();
         mexps = new HashMap<>();
     }
-    
+    List<Switch> hostToEdge;
+    List<Switch> edgeToAgg;
+    List<Switch> pods;
     public void run() {
-        //create super vms
+    
+        isCalced = true;
         g.createSuperVms(this.serverPower);
-        System.out.println("-------------[Green]---------------");
-        System.out.println("TRAFFIC SUM: " + g.sumSuperTrafficMatrix());
-        
-        System.out.println("min server num obtainded: " + g.getServerNum() + ", for total: " + g.getTotalWork());
-        //calculate k-cuts
         g.calculateCuts();
-        
-        List<List<Switch>> ret = g.assignSuperVmsToServers();
-        System.out.println("" + ret.get(0).size() + " " + ret.get(1).size());
-        //voroodi va khorooji har edge hast be server
-        List<Switch> hostToEdge = ret.get(0);
-//        if(edges.size() > FatTree.getK()*FatTree.getK()/2)
-//            return;
-        //voroodi va khorooji har edge be agg
-        List<Switch> edgeToAgg = g.getAgg(hostToEdge);
-        double aggtraffic = 0.0;
-        for(Switch w : edgeToAgg) {
-            for(SwitchTraffic st : w.getSwitchTraffic()) {
-                aggtraffic += st.in;
-                aggtraffic += st.out;
-            }
-        }
-        System.out.println("-----> Aggregate traffic: " + aggtraffic);
-//        System.out.println("GreenDCN: ");
-//        for(Switch sw : aggs) {
-//            for(SwitchTraffic st : sw.getSwitchTraffic()) {
-//                System.out.println("" + st.in + " " + st.out);
-//            }
-//        }
+        List<List<Switch>> ret = g.assignSuperVmsToServers(this.serverPower.getMaxUsage());
+        g.fillServers();
+        hostToEdge = ret.get(0);
+        edgeToAgg = g.getAgg(hostToEdge);
         List<Switch> aggAux2 = ret.get(1);
-        //voroodi khorooji har pod hast??
-        List<Switch> pods = g.getCore(aggAux2);        
-        
-        Output output = new Output();
+        pods = g.getCore(aggAux2);   
         
         CalCulator.mode = CalCulator.MIN;
-        
-        double ret1[];
-        
-        ret1 = CalCulator.getConsumptionEdge(hostToEdge, edgeToAgg, this.edgePower, this.linkPower);
-        output.addVal(Output.EDGE, Output.NUMBER, ret1[0]);
-        output.addVal(Output.EDGE, Output.VALUE, ret1[1]);
-        
-        ret1 = CalCulator.getAggConsumption(edgeToAgg, pods, this.aggPower, this.linkPower);
-        output.addVal(Output.AGG, Output.NUMBER, ret1[0]);
-        output.addVal(Output.AGG, Output.VALUE, ret1[1]);
-     
-        ret1 = CalCulator.getConsumptionCore(pods, this.edgePower, this.linkPower);
-        output.addVal(Output.CORE, Output.NUMBER, ret1[0]);
-        output.addVal(Output.CORE, Output.VALUE, ret1[1]);
+        AlgRunner algRunner = new AlgRunner();
+        algRunner.setAggPower(aggPower);
+        algRunner.setCorePowModel(corePowModel);
+        algRunner.setEdgePower(edgePower);
+        algRunner.setLinkPower(linkPower);
+        algRunner.setServerPower(serverPower);
+        Output output = algRunner.getNutConsump(hostToEdge, edgeToAgg, pods);
      
         double srvVal = 0.0;
         for(Double d : g.getget()) {
             srvVal += this.serverPower.getConsumption(d);
         }
         
-//        ret1 = CalCulator.getConsumptionServer(g.getTotalWork(), g.getServerNum(), this.serverPower);
-//        output.addVal(Output.SERVER, Output.NUMBER, ret1[0]);
-//        output.addVal(Output.SERVER, Output.VALUE, ret1[1]);
-        System.out.println("" + srvVal);
         output.addVal(Output.SERVER, Output.NUMBER, g.getServerNum());
         output.addVal(Output.SERVER, Output.VALUE, srvVal);
         
-//        System.out.println("set p: " + this.proportionality);
-        LogUtil.LOGGER.log(Level.INFO, "DC Consumption Green: {0}", output.getDcConsumption());
-        
-//        this.mexps.put(this.proportionality, output);
         this.addExp(this.mexps, this.proportionality, output);
     }
     
@@ -210,7 +175,4 @@ public class RunGreenDCNFrameWork {
     public void setG(GreenDCNClass g) {
         this.g = g;
     }
-    
-    
-    
 }

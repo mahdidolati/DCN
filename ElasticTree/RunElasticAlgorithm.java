@@ -6,65 +6,155 @@
 
 package ElasticTree;
 
+import MyPackage.MyPack.JobMy;
+import MyPackage.MyPack.Server;
 import greendcn.GreenDCNClass;
 import greendcn.power.CalCulator;
 import greendcn.power.DevicePowerUsageModel;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import shared.AlgRunner;
 import utility.FatTree;
+import utility.Output;
 import utility.Switch;
+import utility.SwitchTraffic;
 
 /**
  *
  * @author mahdi
  */
 public class RunElasticAlgorithm {
-    public static double run(GreenDCNClass g, DevicePowerUsageModel powModel, 
-            DevicePowerUsageModel powModelServer, DevicePowerUsageModel powModelLink) {
-        //create super vms
-        System.out.println("------------ELASTIC----------");
-        g.createSuperVmsElastic(powModelServer);
-        System.out.println("Sum of traffic in network: " + g.sumSuperTrafficMatrix());
-        List<List<Switch>> ret = g.assignSuperVmsToServersElastic();
-        //voroodi va khorooji har edge hast be server
-        List<Switch> edges = ret.get(0);
-//        if(edges.size() > FatTree.getK()*FatTree.getK()/2)
-//            return -1;
-        //voroodi va khorooji har edge be agg
-        List<Switch> aggs2 = g.getAgg(edges);
-        List<Switch> aggAux2 = ret.get(1);
-        //voroodi khorooji har pod hast??
-        List<Switch> cores2 = g.getCore(aggAux2);        
-        
-        double p2[] = new double[3];
-    
-        double ret1[];
-     
-        CalCulator.mode = CalCulator.MIN;
-        
-        ret1 = CalCulator.getConsumptionEdge(edges, aggs2, powModel, powModelLink);
-        System.out.print("edge pow: " + ret1[1] + ", num: " + ret1[0]);
-        p2[0] = ret1[0];
-        p2[1] = ret1[1];
-        
-        ret1 = CalCulator.getAggConsumption(aggs2, cores2, powModel, powModelLink);
-        System.out.print(", agg: " + ret1[1] + ", num: " + ret1[0]);
-        p2[0] += ret1[0];
-        p2[1] += ret1[1];
-     
-        ret1 = CalCulator.getConsumptionCore(cores2, powModel, powModelLink);
-        System.out.print(", core: " + ret1[1] + ", num: " + ret1[0]);
-        p2[0] += ret1[0];
-        p2[1] += ret1[1];
-     
-        System.out.print(", network power: " + p2[1] + ", all switch num: " + p2[0]);
-        
-        ret1 = CalCulator.getConsumptionServer(g.getTotalWork(), g.getServerNum(), powModelServer);
-        System.out.println(", srv: " + ret1[1]);
-        p2[1] += ret1[1];
-        p2[2] = ret1[0];
-        
-        System.out.println("" + "switchNum: " + p2[0] + ", serverNum: " + p2[2]);
-        System.out.println("------------ELASTIC END----------");
-        return p2[1];
+    private DevicePowerUsageModel edgePower, aggPower, corePowModel, serverPower, linkPower;
+    private double proportionality;
+    public Map<Double, Map<Double, Output>> bexps;
+    public Map<Double, Output> mexps;
+    private GreenDCNClass g;
+    public boolean isCalced;
+    public RunElasticAlgorithm() {
+        bexps = new HashMap<>();
+        mexps = new HashMap<>();
     }
+    
+    public void run() {
+        
+        g.createSuperVmsElastic(serverPower);
+        
+        List<Switch> hostToEdge = g.getHostToEdgeByServer(g.servers, FatTree.getK()/2);
+        
+        List<Switch> edgeToAgg = g.getEdgeToAggByServer(hostToEdge, 1);
+        
+        List<Switch> pods = g.getInterPodByServer(edgeToAgg, FatTree.getK()/2);
+       
+        
+        CalCulator.mode = CalCulator.MIN;
+        AlgRunner algRunner = new AlgRunner();
+        algRunner.setAggPower(aggPower);
+        algRunner.setCorePowModel(corePowModel);
+        algRunner.setEdgePower(edgePower);
+        algRunner.setLinkPower(linkPower);
+        algRunner.setServerPower(serverPower);
+        Output output = algRunner.getNutConsump(hostToEdge, edgeToAgg, pods);
+
+        double srvVal = 0.0;
+        for(Server server : g.servers) {
+            srvVal += this.serverPower.getConsumption(server.curLoad);
+        }
+
+        output.addVal(Output.SERVER, Output.NUMBER, g.getServerNum());
+        output.addVal(Output.SERVER, Output.VALUE, srvVal);
+        
+        this.addExp(mexps, proportionality, output);
+    }
+
+    private void addExp(Map<Double, Output> m, double d, Output o) {
+        if(m.containsKey(d)) {
+            m.get(d).addOutput(o);
+        }else {
+            m.put(d, o);
+        }
+    }
+    
+    public DevicePowerUsageModel getEdgePower() {
+        return edgePower;
+    }
+
+    public void setEdgePower(DevicePowerUsageModel edgePower) {
+        this.edgePower = edgePower;
+    }
+
+    public DevicePowerUsageModel getAggPower() {
+        return aggPower;
+    }
+
+    public void setAggPower(DevicePowerUsageModel aggPower) {
+        this.aggPower = aggPower;
+    }
+
+    public DevicePowerUsageModel getCorePowModel() {
+        return corePowModel;
+    }
+
+    public void setCorePowModel(DevicePowerUsageModel corePowModel) {
+        this.corePowModel = corePowModel;
+    }
+
+    public DevicePowerUsageModel getServerPower() {
+        return serverPower;
+    }
+
+    public void setServerPower(DevicePowerUsageModel serverPower) {
+        this.serverPower = serverPower;
+    }
+
+    public DevicePowerUsageModel getLinkPower() {
+        return linkPower;
+    }
+
+    public void setLinkPower(DevicePowerUsageModel linkPower) {
+        this.linkPower = linkPower;
+    }
+
+    public double getProportionality() {
+        return proportionality;
+    }
+
+    public void setProportionality(double proportionality) {
+        this.proportionality = proportionality;
+    }
+
+    public Map<Double, Map<Double, Output>> getBexps() {
+        return bexps;
+    }
+
+    public void setBexps(Map<Double, Map<Double, Output>> bexps) {
+        this.bexps = bexps;
+    }
+
+    public Map<Double, Output> getMexps() {
+        return mexps;
+    }
+
+    public void setMexps(Map<Double, Output> mexps) {
+        this.mexps = mexps;
+    }
+
+    public GreenDCNClass getG() {
+        return g;
+    }
+
+    public void setG(GreenDCNClass g) {
+        this.g = g;
+    }
+
+    public boolean isIsCalced() {
+        return isCalced;
+    }
+
+    public void setIsCalced(boolean isCalced) {
+        this.isCalced = isCalced;
+    }
+    
+    
+    
 }
